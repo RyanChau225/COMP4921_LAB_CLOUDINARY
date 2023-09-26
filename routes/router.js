@@ -24,6 +24,8 @@ const upload = multer({ storage: storage })
 const mongodb_database = process.env.REMOTE_MONGODB_DATABASE;
 const userCollection = database.db(mongodb_database).collection('users');
 const petCollection = database.db(mongodb_database).collection('pets');
+const mediaCollection = database.db(mongodb_database).collection('media');
+const countersCollection = database.db(mongodb_database).collection('counters');
 
 const Joi = require("joi");
 const mongoSanitize = require('express-mongo-sanitize');
@@ -134,6 +136,7 @@ router.post('/setPetPic', upload.single('image'), function(req, res, next) {
 	console.log(req.body);
 	console.log(req.file);
 });
+
 
 router.get('/showPets', async (req, res) => {
 	console.log("page hit");
@@ -342,6 +345,152 @@ router.post('/addPet', async (req, res) => {
 		console.log("Error connecting to MySQL");
 		console.log(ex);	
 	}
+});
+
+
+router.post('/addMedia', async (req, res) => {
+  try {
+      console.log("form submit");
+
+      let user_id = req.body.user_id;
+      let media_type = req.body.media_type;
+      let original_link = req.body.original_link;
+      let text_content = req.body.text_content;  // Extract text content from the request
+      let active = req.body.active === 'true';  // Convert the active field to a boolean value
+      // let url = req.body.url;  // Assuming url is generated elsewhere and passed in the request
+      // let shortURL = req.body.shortURL;  // Assuming shortURL is generated elsewhere and passed in the request
+      let url = 'https://example.com';  // Replace with your default URL
+      let shortURL = 'https://example.com/short';  // Replace with your default short URL
+      
+
+      // Create schema for validation
+      const schema = Joi.object({
+        user_id: Joi.string().alphanum().min(24).max(24).required(),
+        media_type: Joi.string().valid('links', 'image', 'text').required(),
+        original_link: Joi.when('media_type', {
+            is: 'links',
+            then: Joi.string().uri().required(),
+            otherwise: Joi.optional()  // Make this field optional when media_type is not 'links'
+        }),
+        text_content: Joi.when('media_type', {
+            is: 'text',
+            then: Joi.string().required(),
+            otherwise: Joi.optional()  // Make this field optional when media_type is not 'text'
+        }),
+        active: Joi.boolean().required(),
+        url: Joi.string().uri().required(),
+        shortURL: Joi.string().uri().required(),
+        created: Joi.date(),
+        last_hit: Joi.date()
+    }).options({ allowUnknown: true });  // Allow unknown keys
+
+      // Validate the request data
+      const validationResult = schema.validate({
+          user_id,
+          media_type,
+          original_link,
+          text_content,  // Include text_content in the validation
+          active,
+          url,
+          shortURL,
+          created: new Date(),
+          last_hit: new Date()  // Assuming last_hit is updated to the current date when the media is created
+      });
+
+      if (validationResult.error != null) {
+          console.log(validationResult.error);
+          res.render('error', { message: 'Invalid data provided' });
+          return;
+      }
+
+      // Create a document object with common fields
+      const document = {
+          user_id: new ObjectId(user_id),
+          media_type,
+          active,
+          url,
+          shortURL,
+          created: new Date(),
+          last_hit: new Date()
+      };
+
+      // Add media-specific fields to the document object
+      if (media_type === 'links') {
+          document.original_link = original_link;
+      } else if (media_type === 'text') {
+          document.text_content = text_content;
+      }
+
+      // MongoDB will automatically create a unique _id for each document
+      await mediaCollection.insertOne(document);
+
+      res.redirect(`/showMedia?id=${user_id}`);
+  } catch (ex) {
+      res.render('error', { message: 'Error connecting to MongoDB' });
+      console.log("Error connecting to MongoDB");
+      console.log(ex);
+  }
+});
+
+
+
+router.get('/showMedia', async (req, res) => {
+  console.log("page hit");
+  try {
+      let user_id = req.query.id;
+      console.log("userId: " + user_id);
+
+      // Joi validate
+      const schema = Joi.object({
+          user_id: Joi.string().alphanum().min(24).max(24).required()
+      });
+
+      const validationResult = schema.validate({ user_id });
+      if (validationResult.error != null) {
+          console.log(validationResult.error);
+          res.render('error', { message: 'Invalid user_id' });
+          return;
+      }
+
+      // Fetch media based on user_id
+      const media = await mediaCollection.find({ "user_id": new ObjectId(user_id) }).toArray();
+      if (media === null) {
+          res.render('error', { message: 'Error connecting to MongoDB' });
+          console.log("Error connecting to media collection");
+      }
+      else {
+          console.log(media);
+          res.render('media', { allMedia: media, user_id: user_id });  // _id can be accessed directly in your media.ejs file
+      }
+  }
+  catch (ex) {
+      res.render('error', { message: 'Error connecting to MongoDB' });
+      console.log("Error connecting to MongoDB");
+      console.log(ex);
+  }
+});
+
+router.get('/media/:id', async (req, res) => {
+  try {
+      const mediaId = req.params.id;
+      const mediaItem = await mediaCollection.findOne({ _id: new ObjectId(mediaId) });
+
+      if (mediaItem) {
+          if (mediaItem.media_type === 'text') {
+              res.render('textPage', { textContent: mediaItem.text_content });
+          } else if (mediaItem.media_type === 'links') {
+              res.redirect(mediaItem.original_link);
+          } else {
+              res.render('error', { message: 'Invalid media type' });
+          }
+      } else {
+          res.render('error', { message: 'Media item not found' });
+      }
+  } catch (ex) {
+      res.render('error', { message: 'Error connecting to MongoDB' });
+      console.log("Error connecting to MongoDB");
+      console.log(ex);
+  }
 });
 
 module.exports = router;

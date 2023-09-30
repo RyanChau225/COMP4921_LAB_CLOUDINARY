@@ -364,7 +364,9 @@ router.post('/addMedia', async (req, res) => {
       let title = req.body.title;
       let active = req.body.active === 'true';
       let url = `https://example.com/${uuidv4()}`;
+      let custom_url = req.body.custom_url;
 
+      
       // Create schema for validation
       const schema = Joi.object({
           user_id: Joi.string().alphanum().min(24).max(24).required(),
@@ -406,6 +408,27 @@ router.post('/addMedia', async (req, res) => {
           res.render('error', { message: 'Invalid data provided' });
           return;
       }
+      // Check if a custom_url is provided
+      console.log("run2");
+      let shortURL;
+      if (custom_url) {
+        // Prepend the domain to the custom_url
+        shortURL = `https://example.com/${custom_url}`;
+      } else {
+        // Generate a short URL as before
+        shortURL = createShortUrl(original_link);
+      }
+      
+      const existingMediaItem = await mediaCollection.findOne({ shortURL: shortURL });
+      if (existingMediaItem) {
+        let allMedia = await mediaCollection.find({ user_id: new ObjectId(user_id) }).toArray();
+        res.render('media', { error: 'Short URL already exists', user_id: user_id, allMedia: allMedia });
+        return;
+      }
+    
+    console.log("run3");
+    
+      
 
       // Create a document object with common fields
       const document = {
@@ -414,7 +437,7 @@ router.post('/addMedia', async (req, res) => {
           title,
           active,
           url,
-          shortURL: validationResult.value.shortURL,
+          shortURL: shortURL,
           created: new Date(),
           last_hit: new Date(),
           hits: 0
@@ -426,6 +449,10 @@ router.post('/addMedia', async (req, res) => {
       } else if (media_type === 'text') {
           document.text_content = text_content;
       }
+
+      console.log("run4");
+
+      
 
       // MongoDB will automatically create a unique _id for each document
       await mediaCollection.insertOne(document);
@@ -585,5 +612,77 @@ router.get('/media/:id', async (req, res) => {
       console.log(ex);
   }
 });
+
+router.get('/filter/:mediaType', async (req, res) => {
+  try {
+    const mediaType = req.params.mediaType;
+    const userId = req.query.user_id;  // Get user_id from the query parameters
+    const filteredMediaItems = await mediaCollection.find({ media_type: mediaType }).toArray();
+    res.render('media', { allMedia: filteredMediaItems, user_id: userId });
+  } catch (ex) {
+    res.render('error', { message: 'Error filtering media items' });
+    console.error('Error filtering media items:', ex);
+  }
+});
+
+
+// Assuming you have already defined your Express app and mediaCollection
+
+router.post('/activateMedia', async (req, res) => {
+  try {
+      const media_id = req.body.media_id;
+      const user_id = req.body.user_id;
+
+      // Update the active field of the media item to true
+      await mediaCollection.updateOne(
+          { _id: new ObjectId(media_id), user_id: new ObjectId(user_id) },
+          { $set: { active: true } }
+      );
+
+      // Redirect back to the /showMedia page
+      res.redirect(`/showMedia?id=${user_id}`);
+  } catch (ex) {
+      res.render('error', { message: 'Error activating media item' });
+      console.log("Error activating media item");
+      console.log(ex);
+  }
+});
+
+router.post('/deactivateMedia', async (req, res) => {
+  try {
+      const media_id = req.body.media_id;
+      const user_id = req.body.user_id;
+
+      // Update the active field of the media item to false
+      await mediaCollection.updateOne(
+          { _id: new ObjectId(media_id), user_id: new ObjectId(user_id) },
+          { $set: { active: false } }
+      );
+
+      // Redirect back to the /showMedia page
+      res.redirect(`/showMedia?id=${user_id}`);
+  } catch (ex) {
+      res.render('error', { message: 'Error deactivating media item' });
+      console.log("Error deactivating media item");
+      console.log(ex);
+  }
+});
+
+
+// Route to activate a media item
+router.post('/activateMedia', async (req, res) => {
+  const mediaId = req.body.media_id;
+  await mediaCollection.updateOne({ _id: new ObjectId(mediaId) }, { $set: { active: true } });
+  res.redirect(`/showMedia?id=${req.body.user_id}`);
+});
+
+// Route to deactivate a media item
+router.post('/deactivateMedia', async (req, res) => {
+  const mediaId = req.body.media_id;
+  await mediaCollection.updateOne({ _id: new ObjectId(mediaId) }, { $set: { active: false } });
+  res.redirect(`/showMedia?id=${req.body.user_id}`);
+});
+
+
 
 module.exports = router;

@@ -4,7 +4,7 @@ const database = include('databaseConnectionMongoDB');
 var ObjectId = require('mongodb').ObjectId;
 
 const crypto = require('crypto');
-const {v4: uuid} = require('uuid');
+const { v4: uuidv4 } = require('uuid');
 
 const passwordPepper = "SeCretPeppa4MySal+";
 
@@ -347,6 +347,11 @@ router.post('/addPet', async (req, res) => {
 	}
 });
 
+function createShortUrl(originalUrl) {
+  const id = crypto.randomBytes(4).toString('hex');  // Create a random 8-character identifier
+  const shortUrl = `https://example.com/${id}`;
+  return shortUrl;
+}
 
 router.post('/addMedia', async (req, res) => {
   try {
@@ -355,46 +360,45 @@ router.post('/addMedia', async (req, res) => {
       let user_id = req.body.user_id;
       let media_type = req.body.media_type;
       let original_link = req.body.original_link;
-      let text_content = req.body.text_content;  // Extract text content from the request
-      let active = req.body.active === 'true';  // Convert the active field to a boolean value
-      // let url = req.body.url;  // Assuming url is generated elsewhere and passed in the request
-      // let shortURL = req.body.shortURL;  // Assuming shortURL is generated elsewhere and passed in the request
-      let url = 'https://example.com';  // Replace with your default URL
-      let shortURL = 'https://example.com/short';  // Replace with your default short URL
-      
+      let text_content = req.body.text_content;
+      let title = req.body.title;
+      let active = req.body.active === 'true';
+      let url = `https://example.com/${uuidv4()}`;
 
       // Create schema for validation
       const schema = Joi.object({
-        user_id: Joi.string().alphanum().min(24).max(24).required(),
-        media_type: Joi.string().valid('links', 'image', 'text').required(),
-        original_link: Joi.when('media_type', {
-            is: 'links',
-            then: Joi.string().uri().required(),
-            otherwise: Joi.optional()  // Make this field optional when media_type is not 'links'
-        }),
-        text_content: Joi.when('media_type', {
-            is: 'text',
-            then: Joi.string().required(),
-            otherwise: Joi.optional()  // Make this field optional when media_type is not 'text'
-        }),
-        active: Joi.boolean().required(),
-        url: Joi.string().uri().required(),
-        shortURL: Joi.string().uri().required(),
-        created: Joi.date(),
-        last_hit: Joi.date()
-    }).options({ allowUnknown: true });  // Allow unknown keys
+          user_id: Joi.string().alphanum().min(24).max(24).required(),
+          media_type: Joi.string().valid('links', 'image', 'text').required(),
+          title: Joi.string().min(1).required(),
+          shortURL: Joi.string().uri().optional(),
+          original_link: Joi.when('media_type', {
+              is: 'links',
+              then: Joi.string().uri().required(),
+              otherwise: Joi.optional()
+          }),
+          text_content: Joi.when('media_type', {
+              is: 'text',
+              then: Joi.string().min(1).required(),
+              otherwise: Joi.optional()
+          }),
+          active: Joi.boolean().required(),
+          url: Joi.string().uri().required(),
+          created: Joi.date(),
+          last_hit: Joi.date()
+      }).options({ allowUnknown: true });
 
       // Validate the request data
       const validationResult = schema.validate({
           user_id,
           media_type,
+          title,
           original_link,
-          text_content,  // Include text_content in the validation
+          text_content,
           active,
           url,
-          shortURL,
+          shortURL: media_type === 'links' ? createShortUrl(original_link) : undefined,
           created: new Date(),
-          last_hit: new Date()  // Assuming last_hit is updated to the current date when the media is created
+          last_hit: new Date()
       });
 
       if (validationResult.error != null) {
@@ -407,11 +411,13 @@ router.post('/addMedia', async (req, res) => {
       const document = {
           user_id: new ObjectId(user_id),
           media_type,
+          title,
           active,
           url,
-          shortURL,
+          shortURL: validationResult.value.shortURL,
           created: new Date(),
-          last_hit: new Date()
+          last_hit: new Date(),
+          hits: 0
       };
 
       // Add media-specific fields to the document object
@@ -431,6 +437,93 @@ router.post('/addMedia', async (req, res) => {
       console.log(ex);
   }
 });
+
+
+
+router.get('/media/:id', async (req, res) => {
+  try {
+      const shortUrl = `https://example.com/${req.params.id}`;
+      const mediaItem = await mediaCollection.findOne({ shortURL: shortUrl });
+      if (mediaItem && mediaItem.media_type === 'links') {
+          await updateLastHit(mediaItem._id.toString());  // Update the last_hit field
+          res.redirect(mediaItem.original_link);
+      } else {
+          res.status(404).send('Not found');
+      }
+  } catch (ex) {
+      res.render('error', { message: 'Error connecting to MongoDB' });
+      console.log("Error connecting to MongoDB");
+      console.log(ex);
+  }
+});
+
+router.get('/redirect/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    // Validate id format before creating ObjectId
+    if (!ObjectId.isValid(id)) {
+      res.status(400).send('Invalid id format');
+      return;
+    }
+    const mediaItem = await mediaCollection.findOne({ _id: new ObjectId(id) });
+    if (mediaItem && mediaItem.media_type === 'links') {
+      await updateLastHitAndHits(id);  // Update the last_hit and hits fields
+      res.redirect(mediaItem.original_link);
+    } else {
+      res.status(404).send('Not found');
+    }
+  } catch (ex) {
+    res.render('error', { message: 'Error connecting to MongoDB' });
+    console.log("Error connecting to MongoDB");
+    console.log(ex);
+  }
+});
+
+
+
+
+async function updateLastHitAndHits(mediaId) {
+  try {
+      const result = await mediaCollection.updateOne(
+          { _id: new ObjectId(mediaId) },
+          {
+              $set: { last_hit: new Date() },
+              $inc: { hits: 1 }  // Increment the hits field by 1
+          }
+      );
+      console.log(`${result.matchedCount} document(s) matched the filter, updated ${result.modifiedCount} document(s)`);
+  } catch (error) {
+      console.error(`An error occurred: ${error}`);
+  }
+}
+
+
+// // Define a new route to handle redirection
+// router.get('/redirect/:id', async (req, res) => {
+//   try {
+//       // Extract the mediaId from the request parameters
+//       const mediaId = req.params.id;
+      
+//       // Fetch the media item from the database
+//       const mediaItem = await mediaCollection.findOne({ _id: new ObjectId(mediaId) });
+      
+//       // If the media item was found, redirect to its URL or shortened URL
+//       if (mediaItem) {
+//           await updateLastHit(mediaId);  // Update the last_hit field
+//           const redirectToUrl = mediaItem.shortURL || mediaItem.url;  // Prefer the shortened URL if it's available
+//           res.redirect(redirectToUrl);
+//       } else {
+//           // If the media item was not found, render an error page
+//           res.render('error', { message: 'Media item not found' });
+//       }
+//   } catch (ex) {
+//       // Handle any errors that occur
+//       res.render('error', { message: 'Error connecting to MongoDB' });
+//       console.log("Error connecting to MongoDB");
+//       console.log(ex);
+//   }
+// });
+
 
 
 

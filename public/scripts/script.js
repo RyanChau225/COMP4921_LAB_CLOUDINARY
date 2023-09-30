@@ -3,5 +3,3 @@ function toggleInputFields() {
   document.getElementById('original-link-field').style.display = mediaType === 'links' ? 'block' : 'none';
   document.getElementById('text-area-field').style.display = mediaType === 'text' ? 'block' : 'none';
 }
-
-document.addEventListener('DOMContentLoaded', toggleInputFields);

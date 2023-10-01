@@ -418,15 +418,14 @@ router.post('/addMedia', async (req, res) => {
         // Generate a short URL as before
         shortURL = createShortUrl(original_link);
       }
+
       
       const existingMediaItem = await mediaCollection.findOne({ shortURL: shortURL });
       if (existingMediaItem) {
         let allMedia = await mediaCollection.find({ user_id: new ObjectId(user_id) }).toArray();
-        res.render('media', { error: 'Short URL already exists', user_id: user_id, allMedia: allMedia });
+        res.render('media', { error: 'Custom URL already exists', user_id: user_id, allMedia: allMedia });
         return;
       }
-    
-    console.log("run3");
     
       
 
@@ -455,7 +454,16 @@ router.post('/addMedia', async (req, res) => {
       
 
       // MongoDB will automatically create a unique _id for each document
-      await mediaCollection.insertOne(document);
+      const result = await mediaCollection.insertOne(document);
+      if (media_type === 'text') {
+        // Now that the document has been inserted, the _id field has been generated
+        // Update the document to set the url field
+        const newUrl = `https://example.com/textpage/${result.insertedId}`;
+        await mediaCollection.updateOne(
+            { _id: result.insertedId },
+            { $set: { url: newUrl } }
+        );
+    }
 
       res.redirect(`/showMedia?id=${user_id}`);
   } catch (ex) {
@@ -484,7 +492,26 @@ router.get('/media/:id', async (req, res) => {
   }
 });
 
-router.get('/redirect/:id', async (req, res) => {
+async function checkActive(req, res, next) {
+  const id = req.params.id;
+  if (!ObjectId.isValid(id)) {
+      res.status(400).send('Invalid id format');
+      return;
+  }
+  const mediaItem = await mediaCollection.findOne({ _id: new ObjectId(id) });
+  if (mediaItem && mediaItem.active) {
+      next();  // Media item is active, proceed to the next middleware
+  } else if (mediaItem) {
+      // Media item is not active, redirect back to media page
+      let allMedia = await mediaCollection.find({ user_id: new ObjectId(mediaItem.user_id) }).toArray();
+      res.render('media', { error: 'Link is disabled', user_id: mediaItem.user_id, allMedia: allMedia });
+  } else {
+      res.status(404).send('Not found');
+  }
+}
+
+
+router.get('/redirect/:id', checkActive, async (req, res) => {
   try {
     const id = req.params.id;
     // Validate id format before creating ObjectId
@@ -492,10 +519,25 @@ router.get('/redirect/:id', async (req, res) => {
       res.status(400).send('Invalid id format');
       return;
     }
+    // Fetch the media item from the database
     const mediaItem = await mediaCollection.findOne({ _id: new ObjectId(id) });
-    if (mediaItem && mediaItem.media_type === 'links') {
+    if (mediaItem) {
+      if (!mediaItem.active) {
+        let allMedia = await mediaCollection.find({ user_id: new ObjectId(mediaItem.user_id) }).toArray();
+        res.render('media', { error: 'Link is disabled', user_id: mediaItem.user_id, allMedia: allMedia });
+        return;
+    }
+    
+
       await updateLastHitAndHits(id);  // Update the last_hit and hits fields
-      res.redirect(mediaItem.original_link);
+      
+      if (mediaItem.media_type === 'links') {
+        res.redirect(mediaItem.original_link);
+      } else if (mediaItem.media_type === 'text') {
+        res.render('textPage', { text_content: mediaItem.text_content });
+      } else {
+        res.status(400).send('Unsupported media type');
+      }
     } else {
       res.status(404).send('Not found');
     }
@@ -505,6 +547,7 @@ router.get('/redirect/:id', async (req, res) => {
     console.log(ex);
   }
 });
+
 
 
 
@@ -683,6 +726,22 @@ router.post('/deactivateMedia', async (req, res) => {
   res.redirect(`/showMedia?id=${req.body.user_id}`);
 });
 
+router.get('/textpage/:id', async (req, res) => {
+  try {
+      const { id } = req.params;
+      const mediaItem = await mediaCollection.findOne({ _id: new ObjectId(id) });
+
+      if (!mediaItem || mediaItem.media_type !== 'text') {
+          res.render('error', { message: 'Invalid media item ID or type' });
+          return;
+      }
+
+      res.render('textpage', { text_content: mediaItem.text_content });
+  } catch (ex) {
+      res.render('error', { message: 'Error retrieving text content' });
+      console.log("Error retrieving text content:", ex);
+  }
+});
 
 
 module.exports = router;

@@ -29,7 +29,7 @@
           <a class="button" href="/filter/text">Text</a>
         </div>
         
-        <form action="addMedia" method="post">
+        <form action="/addMedia" method="post" onsubmit="return validateForm()">
           <input type="hidden" name="user_id" value="<%= user_id %>" />
           
           <div class="field is-horizontal">
@@ -127,18 +127,18 @@
               <td><%= allMedia[i].title %></td> 
               <td><%= allMedia[i].media_type %></td>
               <td><%= allMedia[i].original_link %></td>
-              <td><%= allMedia[i].active ? 'Yes' : 'No' %>
+              <td>
                 <% if (allMedia[i].active) { %>
                   <form action="/deactivateMedia" method="post">
                       <input type="hidden" name="media_id" value="<%= allMedia[i]._id %>">
                       <input type="hidden" name="user_id" value="<%= user_id %>">
-                      <button type="submit" class="button is-danger">Deactivate</button>
+                      <button type="submit" class="button is-success">Yes</button>
                   </form>
                   <% } else { %>
                   <form action="/activateMedia" method="post">
                       <input type="hidden" name="media_id" value="<%= allMedia[i]._id %>">
                       <input type="hidden" name="user_id" value="<%= user_id %>">
-                      <button type="submit" class="button is-success">Activate</button>
+                      <button type="submit" class="button is-danger">No</button>
                   </form>
                   <% } %>
               </td>
@@ -195,6 +195,7 @@
             </footer>
         </div>
     </div>
+    
 </body>
 
 

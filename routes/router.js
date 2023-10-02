@@ -409,7 +409,6 @@ router.post('/addMedia', async (req, res) => {
           return;
       }
       // Check if a custom_url is provided
-      console.log("run2");
       let shortURL;
       if (custom_url) {
         // Prepend the domain to the custom_url
@@ -448,8 +447,6 @@ router.post('/addMedia', async (req, res) => {
       } else if (media_type === 'text') {
           document.text_content = text_content;
       }
-
-      console.log("run4");
 
       
 
@@ -530,14 +527,14 @@ router.get('/redirect/:id', checkActive, async (req, res) => {
     
 
       await updateLastHitAndHits(id);  // Update the last_hit and hits fields
-      
-      if (mediaItem.media_type === 'links') {
-        res.redirect(mediaItem.original_link);
-      } else if (mediaItem.media_type === 'text') {
-        res.render('textPage', { text_content: mediaItem.text_content });
-      } else {
-        res.status(400).send('Unsupported media type');
-      }
+      //need to implement the image redirect
+      res.render('countdown', {
+        shortURL: mediaItem.shortURL,
+        customURL: mediaItem.custom_url,  // Assume there's a custom_url field
+        url: mediaItem.original_link || `/textpage/${id}`,
+        seconds: 5
+      });
+
     } else {
       res.status(404).send('Not found');
     }
@@ -568,31 +565,6 @@ async function updateLastHitAndHits(mediaId) {
 }
 
 
-// // Define a new route to handle redirection
-// router.get('/redirect/:id', async (req, res) => {
-//   try {
-//       // Extract the mediaId from the request parameters
-//       const mediaId = req.params.id;
-      
-//       // Fetch the media item from the database
-//       const mediaItem = await mediaCollection.findOne({ _id: new ObjectId(mediaId) });
-      
-//       // If the media item was found, redirect to its URL or shortened URL
-//       if (mediaItem) {
-//           await updateLastHit(mediaId);  // Update the last_hit field
-//           const redirectToUrl = mediaItem.shortURL || mediaItem.url;  // Prefer the shortened URL if it's available
-//           res.redirect(redirectToUrl);
-//       } else {
-//           // If the media item was not found, render an error page
-//           res.render('error', { message: 'Media item not found' });
-//       }
-//   } catch (ex) {
-//       // Handle any errors that occur
-//       res.render('error', { message: 'Error connecting to MongoDB' });
-//       console.log("Error connecting to MongoDB");
-//       console.log(ex);
-//   }
-// });
 
 
 
@@ -742,6 +714,44 @@ router.get('/textpage/:id', async (req, res) => {
       console.log("Error retrieving text content:", ex);
   }
 });
+
+router.get('/countdown/:id', checkActive, async (req, res) => {
+  try {
+    const id = req.params.id;
+    // Validate id format before creating ObjectId
+    if (!ObjectId.isValid(id)) {
+      res.render('error', { message: 'Invalid id format' });
+      return;
+    }
+    const mediaItem = await mediaCollection.findOne({ _id: new ObjectId(id) });
+    if (mediaItem) {
+      if (!mediaItem.active) {
+        let allMedia = await mediaCollection.find({ user_id: new ObjectId(mediaItem.user_id) }).toArray();
+        res.render('media', { error: 'Link is disabled', user_id: mediaItem.user_id, allMedia: allMedia });
+        return;
+      }
+      
+      // Update the last_hit and hits fields
+      await updateLastHitAndHits(id);
+      
+      // Pass the necessary data to the countdown page
+      res.render('countdown', {
+        url: mediaItem.original_link,
+        shortURL: mediaItem.shortURL,
+        customURL: mediaItem.custom_url,  // Assume there's a custom_url field
+        seconds: 5
+      });
+    } else {
+      res.render('error', { message: 'Not found' });
+    }
+  } catch (ex) {
+    res.render('error', { message: 'Error connecting to MongoDB' });
+    console.log("Error connecting to MongoDB");
+    console.log(ex);
+  }
+});
+
+
 
 
 module.exports = router;

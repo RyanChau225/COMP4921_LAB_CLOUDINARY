@@ -9,7 +9,9 @@ function toggleInputFields() {
 window.onload = toggleInputFields;
 
 function validateForm() {
-  const originalLink = document.querySelector('input[name="original_link"]').value;
+  console.log("validateForm called");  // Add this line
+  var originalLinkInput = document.querySelector('input[name="original_link"]');
+  var originalLink = originalLinkInput.value;
   if (originalLink === '') {
       // Set the error message
       document.getElementById('error-data').setAttribute('data-error', 'Please provide an original link.');
@@ -17,8 +19,14 @@ function validateForm() {
       openModal();
       return false;  // Prevent form submission
   }
+  if (!originalLink.startsWith('http://') && !originalLink.startsWith('https://')) {
+      // Update the input value to include 'http://'
+      originalLinkInput.value = 'http://' + originalLink;
+  }
   return true;  // Allow form submission
 }
+
+
 
 function openModal() {
   document.getElementById('errorModal').classList.add('is-active');

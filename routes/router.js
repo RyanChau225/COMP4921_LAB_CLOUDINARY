@@ -23,9 +23,8 @@ const upload = multer({ storage: storage })
 
 const mongodb_database = process.env.REMOTE_MONGODB_DATABASE;
 const userCollection = database.db(mongodb_database).collection('users');
-const petCollection = database.db(mongodb_database).collection('pets');
+// const petCollection = database.db(mongodb_database).collection('pets');
 const mediaCollection = database.db(mongodb_database).collection('media');
-const countersCollection = database.db(mongodb_database).collection('counters');
 
 const Joi = require("joi");
 const mongoSanitize = require('express-mongo-sanitize');
@@ -422,7 +421,7 @@ router.post('/addMedia', async (req, res) => {
       const existingMediaItem = await mediaCollection.findOne({ shortURL: shortURL });
       if (existingMediaItem) {
         let allMedia = await mediaCollection.find({ user_id: new ObjectId(user_id) }).toArray();
-        res.render('media', { error: 'Custom URL already exists', user_id: user_id, allMedia: allMedia });
+        res.render('home', { error: 'Custom URL already exists', user_id: user_id, allMedia: allMedia });
         return;
       }
     
@@ -501,7 +500,7 @@ async function checkActive(req, res, next) {
   } else if (mediaItem) {
       // Media item is not active, redirect back to media page
       let allMedia = await mediaCollection.find({ user_id: new ObjectId(mediaItem.user_id) }).toArray();
-      res.render('media', { error: 'Link is disabled', user_id: mediaItem.user_id, allMedia: allMedia });
+      res.render('home', { error: 'Link is disabled', user_id: mediaItem.user_id, allMedia: allMedia });
   } else {
       res.status(404).send('Not found');
   }
@@ -521,7 +520,7 @@ router.get('/redirect/:id', checkActive, async (req, res) => {
     if (mediaItem) {
       if (!mediaItem.active) {
         let allMedia = await mediaCollection.find({ user_id: new ObjectId(mediaItem.user_id) }).toArray();
-        res.render('media', { error: 'Link is disabled', user_id: mediaItem.user_id, allMedia: allMedia });
+        res.render('home', { error: 'Link is disabled', user_id: mediaItem.user_id, allMedia: allMedia });
         return;
     }
     
@@ -595,7 +594,7 @@ router.get('/showMedia', async (req, res) => {
       }
       else {
           console.log(media);
-          res.render('media', { allMedia: media, user_id: user_id });  // _id can be accessed directly in your media.ejs file
+          res.render('home', { allMedia: media, user_id: user_id });  // _id can be accessed directly in your media.ejs file
       }
   }
   catch (ex) {
@@ -633,7 +632,7 @@ router.get('/filter/:mediaType', async (req, res) => {
     const mediaType = req.params.mediaType;
     const userId = req.query.user_id;  // Get user_id from the query parameters
     const filteredMediaItems = await mediaCollection.find({ media_type: mediaType }).toArray();
-    res.render('media', { allMedia: filteredMediaItems, user_id: userId });
+    res.render('home', { allMedia: filteredMediaItems, user_id: userId });
   } catch (ex) {
     res.render('error', { message: 'Error filtering media items' });
     console.error('Error filtering media items:', ex);
@@ -727,7 +726,7 @@ router.get('/countdown/:id', checkActive, async (req, res) => {
     if (mediaItem) {
       if (!mediaItem.active) {
         let allMedia = await mediaCollection.find({ user_id: new ObjectId(mediaItem.user_id) }).toArray();
-        res.render('media', { error: 'Link is disabled', user_id: mediaItem.user_id, allMedia: allMedia });
+        res.render('home', { error: 'Link is disabled', user_id: mediaItem.user_id, allMedia: allMedia });
         return;
       }
       
